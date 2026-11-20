@@ -1,5 +1,13 @@
 # Progress
 
+## 2026-11-20: Individual registration and shared storage options
+
+- Owner ruled out official student-list importing and required individual student registration. Recorded the exclusion in SUGGESTIONS.md and removed import/mapping prerequisites from the current plan, context, README, and feature scope. Earlier import proposals below are superseded.
+- Documented entering/verifying each student's number/name, scanning the card, and saving a reusable card assignment with duplicate checks. Student identity stays separate from replaceable cards and per-event attendance.
+- Evaluated private Google Sheets for UID lookup using Google's primary documentation. Added a possible authenticated service/Sheets design and its concurrency, credential, text-formatting, and quota requirements. Supabase remains the recommendation; the owner has not selected a store, and no spreadsheet or backend was created.
+- Verification: local Markdown targets, trailing whitespace, and current import-exclusion consistency checked. Documentation only; no application scaffold exists for lint/build/tests. No Git operations, live data, migrations, or device changes.
+- Remaining: choose shared storage and required registration fields, test actual phone/card compatibility, and confirm council permissions and event attendance rules.
+
 ## 2026-11-20: Council event scope and identifier-only cards
 
 - Owner approved the initial plan and clarified that college student council members will operate the app for event attendance, not teachers/classes. Recorded that exclusion in SUGGESTIONS.md.

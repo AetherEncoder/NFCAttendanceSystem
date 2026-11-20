@@ -3,6 +3,7 @@
 ## Owner-excluded scope
 
 - Teacher-operated classroom attendance: the owner clarified on 2026-11-20 that this app is for a college student council to record attendance at events. Do not reintroduce classes, subjects, or teacher workflows as the core product.
+- Official student-list importing: the owner ruled this out on 2026-11-20 and required individual student registration. Do not make registration depend on school exports or propose importing existing school card mappings as an alternative to individual registration.
 
 ## Proposed later work, not owner exclusions
 

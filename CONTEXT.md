@@ -9,6 +9,8 @@
 - The current request is to record the idea and prepare an implementation plan.
 - The owner approved the initial plan, then clarified the event/council scope and the need to identify students from card identifiers alone.
 - The owner believes the student IDs contain only an identifier, without student details. Treat that as a design assumption to verify on actual cards, not a hardware finding.
+- Importing an official student list is a no-go. Register students individually and link their cards during registration.
+- The owner asked whether Google Sheets could store student details for UID lookup. This is an option under discussion, not an instruction to create a spreadsheet or a finalized storage decision.
 
 ## Current state
 
@@ -21,8 +23,9 @@
 - Authorized council members use scanning phones assigned to events; students do not need their own phones or app accounts.
 - Start with one attendance check-in per student per event. Multiple attendance windows or check-out are undecided.
 - Council members link a card's readable identifier (usually called a UID) to a student record once. That mapping is reused across events; reading an ID does not automatically provide its printed student number or the school's student database.
-- Prefer an official student-list import, followed by verified card linking before an event. If the school supplies an authorized existing card-to-student mapping, validate and import it. Otherwise provide manual student registration and a separate registration desk for unknown cards so the main check-in queue stays fast.
-- Student-list availability is awaiting the owner's answer. CSV import belongs in initial registration if a roster is available; it is not assumed to be available.
+- Council members enter and verify each student's printed number and name, tap the ID, and save the student/card assignment together. Register before an event where possible and use a separate registration desk for unknown cards to keep the main queue fast.
+- Keep student records, card assignments, and attendance separate so replacing a card does not replace the student's identity or history. Program/year are optional fields only if needed for event operations or reporting.
+- Supabase remains the recommended shared store. A private Google Sheet can support a prototype through authenticated access with serialized duplicate checks; a Sheets choice requires adapting the currently proposed PostgreSQL permissions and write guarantees.
 - An event may optionally have an expected-attendee list. Without one, report attendance totals rather than inventing absence counts.
 - Deliver online attendance first; add durable offline capture after the basic flow works if required.
 - Follow the existing Expo development-build approach. Validate NFC dependencies and the real IDs before fixing framework versions.
@@ -31,6 +34,6 @@
 
 - Actual student card technology, identifier stability, and intended Android phone compatibility are unknown. These must be tested before promising support.
 - UID matching identifies a registered card; it does not prove who is holding it or provide cryptographic authentication.
-- Confirm student-list source, who may register/replace cards, event operator permissions, attendance windows, connectivity requirements, and supported phone/Android versions before the corresponding implementation phase.
+- Confirm shared storage (Supabase versus private Sheets), required registration fields, who may register/replace cards, event operator permissions, attendance windows, connectivity requirements, and supported phone/Android versions before the corresponding implementation phase.
 - Owner-excluded scope is recorded in [SUGGESTIONS.md](SUGGESTIONS.md). QR scanning is outside the proposed initial scope; do not treat that planning choice as a permanent owner rejection.
 - Never reuse another project's backend, credentials, real student data, or device-access permissions. Prepare migrations locally; applying them to a live database requires the owner's explicit instruction.
