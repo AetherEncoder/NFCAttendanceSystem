@@ -1,5 +1,15 @@
 # Progress
 
+## 2026-11-20: Council event scope and identifier-only cards
+
+- Owner approved the initial plan and clarified that college student council members will operate the app for event attendance, not teachers/classes. Recorded that exclusion in SUGGESTIONS.md.
+- Updated README.md, CONTEXT.md, FEATURES.md, and IMPLEMENTATION_PLAN.md around events, council permissions, multiple scanning phones, and one attendance record per student/event. The earlier classroom assumptions below are superseded.
+- Expanded the registration solution for identifier-only IDs: import an authorized existing mapping if available, or import/create student records and verify/tap-link cards once for reuse across events. Keep unknown-card registration separate from the normal check-in queue; do not write personal data to cards.
+- Moved student-list import into initial registration when a list is available. Awaiting the owner's answer on official student-list access; manual registration remains the documented alternative.
+- Made expected-attendee lists optional; absence counts require an explicit list. Multiple windows, check-out, late rules, and offline capture remain undecided proposals.
+- Verification: checked local Markdown links, whitespace, and current scope consistency. Rechecked Android's identifier documentation; the real cards' content, readability, and UID stability remain unverified. No app scaffold exists, so app lint/build/tests are unavailable. No Git operations, live data changes, or device changes.
+- Remaining: resolve student-list availability, identify phone/card hardware, prototype NFC reads, and confirm council registration permissions and event attendance rules before implementation.
+
 ## 2026-11-20: NFC Android concept and implementation plan
 
 - Recorded the owner's confirmed idea: Android attendance through tapping student IDs on a phone, replacing the described QR-scanning workflow.
