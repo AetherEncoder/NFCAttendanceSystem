@@ -1,6 +1,6 @@
 # Android NFC attendance implementation plan
 
-Updated 2026-11-20. Planning only; no app, spreadsheet, service, or device changes have been implemented.
+Updated 2026-11-20. The local registration/lookup prototype is implemented; Android build/device verification is tracked in [PROGRESS.md](PROGRESS.md). No spreadsheet, service, event attendance, or sync is implemented. The architecture below describes later delivery phases unless included in [FEATURES.md](FEATURES.md)'s implemented prototype.
 
 ## Confirmed direction
 
@@ -107,4 +107,4 @@ Sheets API limits and Apps Script runtime/service quotas still apply even with b
 
 Before implementation, confirm the real phone/cards, registration fields, council authentication/account ownership, workbook ownership/editing rules, and who may resolve conflicts. Define event finalization separately from finishing a phone session: closing upload intake must not silently reject or erase legitimate pending sessions. Expected-attendee lists, late/check-out rules, retention after sync, and any exception to fresh-download preparation remain product decisions. Source-of-truth and local-first/manual-sync direction are confirmed.
 
-The current change is documentation only. Verify local links, scope consistency, and whitespace; app lint/build/tests cannot run until an app scaffold exists. See [FEATURES.md](FEATURES.md), [CONTEXT.md](CONTEXT.md), and [SUGGESTIONS.md](SUGGESTIONS.md).
+For the current prototype, run TypeScript, Expo lint, isolated Node/SQLite tests, Expo Doctor, a native APK build, and physical phone checks. Real card taps remain necessary to validate NFC compatibility. See [FEATURES.md](FEATURES.md), [CONTEXT.md](CONTEXT.md), and [PROGRESS.md](PROGRESS.md) for implemented scope and verification results; [SUGGESTIONS.md](SUGGESTIONS.md) records excluded scope.

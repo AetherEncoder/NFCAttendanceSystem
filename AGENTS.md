@@ -19,6 +19,10 @@ These instructions apply to all work in NFCAttendanceSystem.
 
 ## Verification and data
 
+- The prototype uses Expo 57, React Native, TypeScript, Expo Router, npm, react-native-nfc-manager, and expo-sqlite. Routes live in src/app, local records in src/data, and NFC integration in src/lib.
+- Use npm run typecheck, npm run lint, npm test, and npx expo-doctor for app checks. npm run android builds a standalone ARM64 APK in artifacts; generated android/ios directories are disposable and ignored. Keep authored native configuration in app.json or config plugins.
+- Run one native build at a time with the memory-limited build script. Select a verified USB device serial explicitly for installation and device checks. Installation is authorized for this prototype; do not uninstall/clear storage to test updates.
+
 - Run the available checks relevant to the change, such as linting, type checking, builds, or tests. Report what was checked and any checks that could not run.
 - Use isolated test data and remove temporary test artifacts after verification.
 - Do not modify live data or apply database migrations without the owner's explicit instruction. Prepare migration files locally when needed.

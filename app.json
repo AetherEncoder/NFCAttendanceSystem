@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "NFC Attendance",
+    "slug": "nfc-attendance",
+    "version": "0.1.0",
+    "icon": "./assets/icon.png",
+    "scheme": "nfc-attendance",
+    "platforms": ["android"],
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.nfccouncil.attendance",
+      "versionCode": 1,
+      "allowBackup": false,
+      "permissions": [
+        "android.permission.NFC",
+        "android.permission.VIBRATE"
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      [
+        "react-native-nfc-manager",
+        {
+          "nfcPermission": "Scan student NFC cards"
+        }
+      ],
+      "expo-status-bar",
+      "expo-font"
+    ]
+  }
+}

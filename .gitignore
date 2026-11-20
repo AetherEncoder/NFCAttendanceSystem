@@ -4,6 +4,7 @@ android/
 ios/
 dist/
 artifacts/
+.impeccable/review/
 *.tsbuildinfo
 *.jks
 *.keystore

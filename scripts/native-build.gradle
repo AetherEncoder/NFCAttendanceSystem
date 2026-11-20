@@ -1,0 +1,11 @@
+gradle.beforeProject { project ->
+    ['com.android.application', 'com.android.library'].each { plugin ->
+        project.plugins.withId(plugin) {
+            project.android.defaultConfig.externalNativeBuild.cmake.arguments(
+                '-DCMAKE_JOB_POOLS=compile=2;link=1',
+                '-DCMAKE_JOB_POOL_COMPILE=compile',
+                '-DCMAKE_JOB_POOL_LINK=link'
+            )
+        }
+    }
+}

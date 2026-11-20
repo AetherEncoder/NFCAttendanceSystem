@@ -6,7 +6,7 @@
 - A college student council will operate it for event attendance, with faster check-in as the main goal. Teachers and classroom attendance are outside the intended use.
 - Students should tap their student IDs on a phone to record attendance, replacing the QR-scanning workflow described by the owner.
 - Review the owner's other projects to follow their Android development practices.
-- The current request is to record the idea and prepare an implementation plan.
+- The initial request was to record the idea and prepare an implementation plan. The owner has now authorized the local registration/lookup prototype and USB installation on the connected phone.
 - The owner approved the initial plan, then clarified the event/council scope and the need to identify students from card identifiers alone.
 - The owner believes the student IDs contain only an identifier, without student details. Treat that as a design assumption to verify on actual cards, not a hardware finding.
 - Importing an official student list is a no-go. Register students individually and link their cards during registration.
@@ -17,7 +17,8 @@
 
 ## Current state
 
-- Planning only; no app scaffold, installed dependencies, database schema, or connected backend exists in this repository.
+- Local prototype implemented in Expo 57 / React Native 0.86.3 / TypeScript / Expo Router, with react-native-nfc-manager 4.3.0 and SQLite. It scans a UID, registers a full name and optional student number/course/section, and looks up saved students entirely on the phone. No backend, attendance capture, or sync exists.
+- The authorized connected phone reports model 24129PN74G and Android 16 with NFC enabled. The standalone prototype is installed and launches with NFC ready; reader background/resume and force-stop/relaunch checks passed. Actual student-card readability, registration/rescan, and identifier stability remain unverified until real taps.
 - The plan is in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). [FEATURES.md](FEATURES.md) distinguishes requested functionality from proposals.
 - Wallet and MedibridgeMobileApplication were inspected read-only on 2026-11-20. Both use Expo, React Native, TypeScript, Expo Router, npm, and Supabase. Wallet uses USB development builds and local persistence; MediBridge also defines cloud development/preview builds.
 
