@@ -1,138 +1,110 @@
 # Android NFC attendance implementation plan
 
-Prepared 2026-11-20. Planning only; no application or database changes have been made.
+Updated 2026-11-20. Planning only; no app, spreadsheet, service, or device changes have been implemented.
 
-## Intended experience
+## Confirmed direction
 
-Council member signs in → selects an event → opens check-in → students tap their IDs → the app confirms each saved attendance → council closes check-in and reviews the event.
+- A college student council operates Android phones to check attendance at events.
+- Register students individually and link their NFC card identifiers; official student-list importing and teacher/classroom workflows are excluded.
+- Google Sheets is the shared store because the council already uses it. The prior Supabase recommendation is superseded.
+- Registration is saved locally first. A council member explicitly uploads pending registrations after checking against the latest shared records.
+- Before starting attendance, download the latest registered-student/card list and event data. During scanning, lookups and attendance saves are local.
+- After the local session ends, a council member explicitly uploads its attendance after checking the latest shared attendance for duplicates and conflicts.
+- Start with one attendance per student per event. Multiple attendance windows, check-out, and late rules remain undecided.
 
-The owner confirmed college student council operation for events. Start with one check-in per student per event; online-first delivery and the exact council permissions remain proposed defaults. Students use physical IDs and do not need their own app accounts.
+## Architecture
 
-## Identifying students from a card identifier
+Android app with SQLite ↔ authenticated batch sync service ↔ private Google Sheets workbook.
 
-Student information does not need to be stored on the NFC tag. Keep the student record and a separate card assignment in the app's shared data store: card UID → student record → attendance at the selected event. The tag identifier is usually called a UID; it is distinct from an internal database UUID and from the printed student number. Android exposes the discovered identifier, but it does not establish that our school's cards contain only that identifier. [Android Tag.getId](https://developer.android.com/reference/android/nfc/Tag#getId())
+- Follow the other mobile projects with React Native, Expo, TypeScript, Expo Router, and npm. Wallet declares Expo ~58.0.14 / RN 0.88.0; MediBridge declares Expo ~57.0.19 / RN 0.86.3. Their packages, routing, build configuration, and Wallet's durable outbox were inspected read-only on 2026-11-20.
+- Candidate NFC bridge: react-native-nfc-manager v4 with its Expo config plugin and an Android development build. Expo Go cannot load it. Use an up-to-date SDK 57 patch for the initial compatibility prototype because that SDK/RN combination has recorded library validation; select and pin actual dependency versions after checking current compatibility. [Library setup](https://github.com/revtel/react-native-nfc-manager/blob/main/docs/guide/expo.md), [support policy](https://github.com/revtel/react-native-nfc-manager/blob/main/docs/SUPPORT_POLICY.md)
+- Use expo-sqlite from the first implementation for registered-student snapshots, registration drafts, local sessions, attendance, and pending sync operations. Persist related changes in one local transaction before confirming a save. React state is a UI view of durable data, not the only copy.
+- Use one Apps Script project as the candidate sync service. Verify council identity and permissions before downloads or writes; test the Android authentication/deployment path early. Keep the workbook private and privileged credentials out of the APK. The endpoint URL is not authentication. [Apps Script web apps](https://developers.google.com/apps-script/guides/web)
+- All managed writes use this service. No Supabase database or per-tap network request is needed for this plan.
 
-The owner requires individual registration and has excluded official student-list importing:
+## Phase 1: prove NFC compatibility
 
-1. At a registration desk, a council member enters the student's printed student number and full name, plus program/year only if needed. Verify the entered information against the physical ID.
-2. Tap the card to capture its normalized UID. Check for an existing student number and active card assignment, then save the student and card link together. If the student is already registered, use the existing record and an explicit authorized card-replacement action rather than creating a duplicate.
-3. Register each card once and reuse its assignment at future events. Prefer registration before the event. During an event, send unknown cards to a separate registration workflow or desk, then explicitly check the student in after registration; linking alone must not record attendance.
+Build a small development app and test the intended physical phone with several actual student IDs. Record device/Android/card technology and dependency versions without committing raw identifiers.
 
-Prevent linking a card that already belongs to another student. Reassignments and replacements require an authorized action and revoke the old assignment without altering historical attendance. Do not write student details to the card or assume access to the school's NFC application or database. No school-provided list or existing mapping is required.
+Check hardware support, NFC enabled state, repeated removal/re-taps, distinct identifiers across tested cards, app restart, successive students, and background/resume cleanup. Read technology/UID without writing to the card; a NDEF-only sample is insufficient for non-NDEF IDs. Android notes that some cards return random or empty identifiers, so stable UID matching must be verified. [Android Tag.getId](https://developer.android.com/reference/android/nfc/Tag#getId())
 
-## Shared student storage: Supabase versus Google Sheets
+Exit condition: the real cards/phone reliably expose a usable stable identifier. If not, investigate the specific incompatibility before building the rest of the product.
 
-Google Sheets can store the UID-to-student directory. The owner is evaluating it; no spreadsheet has been created and storage is not finalized. Supabase remains the recommendation for the multi-phone event app. The phases below describe that PostgreSQL implementation and must be adapted if Sheets is selected.
+## Phase 2: local registration and registration upload
 
-| Option | Fit and tradeoffs |
+1. A council member enters the printed student number and full name, verifies the physical ID, and taps it. Program/year are optional if needed.
+2. Normalize the UID to consistent hexadecimal text, preserving byte order and leading zeroes. Keep it separate from the student's stable internal ID and printed number.
+3. Check both pending local records and the last downloaded directory for duplicate numbers/UIDs. Save the student, card assignment, and pending operation in SQLite together. Label it Saved on phone / Pending upload. Local checks cannot guarantee uniqueness against other phones' unsynced work.
+4. On Upload registrations, send pending records as a batch. The service reads the latest Students/Cards rows, checks the entire incoming batch and shared data, and writes valid new records under the shared lock described below.
+5. Return per-record results: uploaded, already present, or conflict. Matching existing records return canonical shared IDs; the app applies any ID remapping to its related local records in a transaction. Conflicting identity/card details require council review and must not silently overwrite shared records.
+6. Keep failed/conflicting records locally. Mark records synced only after an acknowledgement or a retry response proves that the same operation already succeeded. Show the result counts and refresh the local directory after reconciliation.
+
+New student numbers and active UIDs must be unique. An existing student number with a different card is an explicit replacement workflow, not an automatic merge. Preserve assignment history and past attendance when revoking/replacing a card. Offline replacements can be drafted, but become authoritative only after a successful conflict-checked upload.
+
+For the simplest initial release, session preparation uses synchronized student IDs. Upload new registrations before including those students in a session; if registration fails or conflicts, retain the draft for resolution. Unknown cards go to a separate registration workflow so they do not block the scanning queue. Supporting attendance against unresolved local registrations can be added if the owner needs it.
+
+Exit condition: two phones can upload registrations, reconcile equivalent records, and visibly retain conflicting assignments without loss or duplicates.
+
+## Phase 3: prepare and scan an event locally
+
+1. Create/select a shared event with one stable event_id used by every scanning phone. A local scanning session gets its own session_id; it is not a separate event.
+2. Prepare session downloads a coherent latest authorized student/card snapshot, event state, any configured eligibility, and attendance already uploaded for this event. Record its download time and replace the previous snapshot only after the complete download is valid. Do not overwrite pending registrations or attendance.
+3. A fresh successful preparation is the default requirement for a new session. If the network is unavailable, keep existing data and offer retry; starting a new session with stale cached data requires an explicit future policy. A prepared active session continues without connectivity.
+4. Each tap uses the downloaded UID lookup and local indexes only. Check known shared attendance plus attendance already recorded on this phone, student eligibility, and the session's local state. Save the observation and pending operation to SQLite before showing Saved on phone with the student's name and optional vibration. No network calls occur per tap.
+5. Serialize scan callbacks, suppress repeats from a held card, and handle unknown/revoked cards, ineligible students, failed reads, and storage failures clearly. Stop listeners when the screen loses focus or the app backgrounds; resume safely without losing the local session.
+6. Finish session stops local scanning and shows attendance totals plus a pending-upload count. It does not silently close the shared event for other phones or discard local records. Attendance upload is a separate explicit action.
+
+Without live communication, two phones can both record the same student after their initial downloads. The app must describe counts as local/pending until sync; cross-phone duplicates are resolved during upload. A card revoked or reassigned after the snapshot may also be flagged at upload. Store the original student ID, card assignment, and snapshot reference with each observation; never reinterpret a past scan using a newly reassigned UID.
+
+Exit condition: scanning works without connectivity and local sessions/records survive force-stop and relaunch, with no per-tap Sheets requests.
+
+## Phase 4: safe attendance batch upload
+
+The owner's retrieve → compare → upload step belongs inside one coordinated server operation. A client-only check is insufficient: two phones could both read no attendance and then both append.
+
+1. Authenticate the council member and verify event permissions. Acquire a shared script lock before the authoritative read/check/write section. Read current event state, relevant registration/card validity, existing attendance for this event, and operation IDs. Apps Script provides getScriptLock with tryLock/waitLock; actually acquire the lock before reading. [LockService](https://developers.google.com/apps-script/reference/lock/lock-service)
+2. Validate each observation's original identity, event, and payload. Reconcile by operation_id for retries and by (event_id, student_id) for duplicate attendance. Same operation ID with a changed payload is a conflict, not a new write. Existing attendance returns Already recorded with its canonical record; it does not overwrite that row's time/operator.
+3. Deduplicate inside the incoming batch as well as against the sheet. Append only valid missing attendance and return per-record results. Keep unresolved identity, eligibility, or event-state conflicts for review. Preserve the local observation for an already-recorded result, linked to the canonical shared attendance.
+4. Use a single Sheets batch update for related rows within the workbook where practical, including operation acknowledgements. Google documents atomic updates within a batch request; separate reads and writes are not automatically one transaction. The shared lock protects participating service writers across that interval. If a batch is too large, use bounded chunks with stable per-record IDs and reconcile each chunk safely. [Batch updates](https://developers.google.com/workspace/sheets/api/guides/batchupdate)
+5. Release the lock only after the writes complete. A lost response must be recoverable: the same operation IDs are persisted alongside their effects, so retry reads can prove success without appending again. Mark only acknowledged records synced locally; pending/conflicting rows survive timeout, network failure, or app termination.
+
+An optional phone-side preflight can display conflicts, but the service must still reread/recheck under the lock when committing. The upload button can normally send one batch request whose handler retrieves, compares, writes, and returns results, reducing phone round trips. Fetch only relevant event attendance rather than all historical events. Batch spreadsheet reads/writes rather than issuing one per student; Google recommends this pattern. [Apps Script best practices](https://developers.google.com/apps-script/guides/support/best-practices)
+
+Do not upload a complete old workbook copy over the current sheet. Append/reconcile specific records so another phone's newly uploaded data survives. Script locks do not block manual edits or another script project. For duplicate guarantees, protect managed IDs/attendance ranges and route their mutations through the same service; council members can still view, filter, and use reporting tabs. Decide how council corrections are applied before permitting direct edits that bypass validation.
+
+Exit condition: simultaneous uploads, repeated uploads, and a lost response after a successful write produce one canonical attendance per student/event while retaining local observations and conflicts.
+
+## Workbook and local records
+
+| Record | Main fields |
 | --- | --- |
-| Supabase PostgreSQL | Recommended: matches the owner's existing apps and provides queryable tables, constraints, and row-level access rules for student/card/event data. Use one authoritative store. |
-| Private Google Sheet | Feasible for a prototype or modest event workload. Council members can inspect rows, but duplicate prevention, concurrent registration, authorization, and safe retries must be implemented in the access service and tested under the intended event load. |
+| Students | student_id, unique printed student_number, full_name, active state, optional program/year, registering operator/time |
+| Cards | card_assignment_id, normalized UID, student_id, assigned/revoked times |
+| Events and operators | event_id, name/schedule/state, authorized council members |
+| Expected attendees | Optional explicit eligibility/absence snapshot; do not assume every college student must attend every event |
+| Attendance | attendance_id, operation_id, event_id, student_id, original card assignment, observed_at, received_at, operator, local session_id |
+| Sync acknowledgements/audit | Registration operations, reconciliations, and authorized corrections; written with related changes so retries can recover |
 
-Keep the same logical records in either option:
+Use stable IDs rather than row numbers. Store UID and student number as text; RAW API input avoids automatic numeric/date parsing. [Google value input options](https://developers.google.com/workspace/sheets/api/reference/rest/v4/ValueInputOption)
 
-- Students: stable internal student_id, unique printed student_number, full_name, active state, and registration time/operator. Add program/year only when required.
-- Card assignments: card UID stored as text, student_id, assignment time, and revocation time. Preserve leading zeroes and card byte order; card replacement must not change student_id.
-- Attendance: event_id, student_id, card assignment if tapped, timestamp, and scanning council member. Store attendance separately from the directory so it can grow across events without overwriting student details.
+The phone additionally keeps immutable session snapshots, draft registration IDs, observation/operation IDs, sync outcomes, and pending queues. Separate observation time from server upload time; display the college's configured timezone. Do not use an untrusted phone clock alone to classify late attendance or accept scans after a cutoff. Until rules are defined, the first accepted shared attendance remains canonical; additional offline observations are preserved locally as already recorded rather than silently overwriting it.
 
-For Sheets, use separate Students, Cards, Events, and Attendance tabs rather than one student row with a new column for every event. Use stable record IDs, never row numbers as references. Keep UID and student-number columns as text; API writes using RAW avoid automatic number/date conversion. [Google value input options](https://developers.google.com/workspace/sheets/api/reference/rest/v4/ValueInputOption)
+Keep pending work across expired sign-in. Require explicit resolution before sign-out or account switching can remove unsynced data, and never upload one operator's records under another account without an authorized reconciliation flow.
 
-A Sheets implementation would use Android app → authenticated access service → private spreadsheet. Apps Script can expose GET/POST handlers, but the deployment must verify council identity and permissions; the web-app URL alone is not authentication. Keep owner/service-account credentials on the server, not in the APK, and do not publish the student directory publicly. [Apps Script web apps](https://developers.google.com/apps-script/guides/web), [server-side service accounts](https://developers.google.com/identity/protocols/oauth2/service-account)
+## Phase 5: pilot and delivery
 
-Route mutations through one service. For Apps Script, take a script lock around duplicate checks and writes, including registration and event/student attendance checks; use operation IDs to recover partial writes and retries. Locks coordinate script executions, not manual spreadsheet edits, so protect data tabs from direct edits that bypass validation. A lock is not a database transaction or a uniqueness constraint. [LockService](https://developers.google.com/apps-script/reference/lock/lock-service)
+- Scaffold only what each phase needs: routes in src/app, shared UI in src/components, local domain/sync code in src/data, integrations in src/lib, and styling in src/theme. Authored native changes use configuration/plugins or local modules; generated android files stay disposable.
+- Establish Expo lint, TypeScript, Expo Doctor, and Android build commands. Follow Wallet's memory-limited native-build approach and run one heavy build at a time. Keep signing material outside the repository.
+- Test with isolated student/card/event records and a separate test workbook. Do not create/change live council data or deploy services without the owner's instruction.
+- Run a mock event with multiple phones, then an owner-authorized pilot. Measure directory-download time, local tap speed, upload time, and recovery at the expected event size before choosing batch limits.
+- A preview APK must launch without Metro. Spreadsheet reports and optional attendance export can follow the core flow.
 
-Avoid fetching the entire sheet on every tap. The service can cache an authorized UID lookup with a defined refresh policy, but authoritative checks for writes must still handle concurrent changes. Sheets API integrations have per-minute read/write quotas and must handle throttling; Apps Script deployments also need their own quota and load verification. Load-test the chosen approach before promising an event scan rate. [Sheets API limits](https://developers.google.com/workspace/sheets/api/limits)
+## Verification and decisions still needed
 
-If Supabase is chosen, start with it alone. Add a spreadsheet export later only if requested; a second live copy is not required for registration or lookup.
+Implementation checks must cover local registration/attendance persistence, storage failures, local duplicates, download failure without cache loss, new-registration conflicts, canonical ID remapping, UID formatting, identity replacement between download/upload, concurrent registration/attendance uploads, duplicate payloads within one batch, lost-response retries, partial/chunked upload recovery, permissions, expired sign-in, and account switching with pending work. Check NFC disabled/unsupported states and lifecycle recovery on real hardware; emulators cannot verify NFC.
 
-## What the other projects establish
+Sheets API limits and Apps Script runtime/service quotas still apply even with batch uploads. Handle throttling, lock timeouts, and bounded retries while leaving records pending; distinguish phone-to-service requests from the service's Google API calls. No fixed requests-per-event or throughput promise is made. [Sheets API limits](https://developers.google.com/workspace/sheets/api/limits), [Apps Script quotas](https://developers.google.com/apps-script/guides/services/quotas)
 
-| Project | Inspected implementation | Practice to reuse |
-| --- | --- | --- |
-| Wallet | package.json declares Expo ~58.0.14, React Native 0.88.0, React 19.3.0, TypeScript ~6.0.3; src/app, src/data, src/components, src/theme; Supabase; expo-sqlite-backed cache/outbox | Expo Router, small shared UI, durable writes if offline is needed, USB development builds, memory-limited native builds |
-| MedibridgeMobileApplication | package.json declares Expo ~57.0.19, React Native 0.86.3, React 19.2.3, TypeScript ~6.0.3; src/app and src/lib; Supabase auth; eas.json | Authentication/provider structure, native config through Expo plugins, development and preview APK profiles |
+Before implementation, confirm the real phone/cards, registration fields, council authentication/account ownership, workbook ownership/editing rules, and who may resolve conflicts. Define event finalization separately from finishing a phone session: closing upload intake must not silently reject or erase legitimate pending sessions. Expected-attendee lists, late/check-out rules, retention after sync, and any exception to fresh-download preparation remain product decisions. Source-of-truth and local-first/manual-sync direction are confirmed.
 
-Both have package-lock.json and npm workflows. Wallet's native Android directory is generated; authored native changes live in plugins or local modules. Follow that convention here. Reuse patterns, without copying product-specific stores, credentials, account IDs, or signing setup.
-
-Sources inspected locally: ../Wallet/{package.json,app.json,AGENTS.md,CONTEXT.md,PROGRESS.md}, ../Wallet/src/{data/sync.ts,data/store.tsx,lib/supabase.ts}, ../Wallet/scripts/android-build.sh, ../MedibridgeMobileApplication/{README.md,package.json,app.json,eas.json}, and its src/lib/supabase.ts and src/app/_layout.tsx.
-
-## Recommended stack
-
-- React Native with Expo, TypeScript, Expo Router, and npm, matching the owner's mobile projects.
-- react-native-nfc-manager v4 as the candidate NFC bridge. Use its Expo config plugin and an Android development build. The package cannot run inside Expo Go. [Library setup](https://github.com/revtel/react-native-nfc-manager/blob/main/docs/guide/expo.md)
-- Start the compatibility prototype with an up-to-date Expo SDK 57 patch and SDK-compatible React Native dependencies. The library records SDK 57 / RN 0.86.3 compiler validation; Wallet's SDK 58 / RN 0.88 combination is not listed in that matrix. This is a conservative prototype choice, not a final version lock or proof that our cards work. Pin the actual resolved versions after verification. [Support policy](https://github.com/revtel/react-native-nfc-manager/blob/main/docs/SUPPORT_POLICY.md)
-- A dedicated Supabase project for council member authentication and PostgreSQL persistence is recommended, pending the storage choice above. Use row-level security, keep privileged keys off the phone, and enforce permissions and attendance integrity in the database. [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)
-- Add expo-sqlite only when implementing offline capture. Use React state/context for the initial UI; no additional state framework or custom API server is needed initially.
-
-## Phase 1: prove the phone can read the real IDs
-
-Build a small Android development app with an NFC status/read screen before building the full product.
-
-1. Use the intended NFC-capable phone and several representative student IDs, including different issuance batches if available. Record the model, Android version, card technology, and dependency versions; keep raw identifiers out of committed logs.
-2. Check hardware availability and whether NFC is enabled. Read available tag technologies and identifier without writing to the card. A generic NDEF-only demo is insufficient if the school's IDs are not NDEF tags.
-3. Remove and re-tap each card repeatedly, restart the app, and verify that its identifier remains stable and that tested cards have distinct identifiers. Some tags expose random or empty identifiers, so UID enrollment is conditional. [Android Tag.getId](https://developer.android.com/reference/android/nfc/Tag#getId())
-4. Test successive students, holding a card in place, failed reads, navigation away, and background/resume. Confirm listener cleanup and recovery. NFC hardware support depends on the phone and tag technology. [Android setup](https://github.com/revtel/react-native-nfc-manager/blob/main/docs/guide/android.md)
-
-Exit condition: the actual phone/cards reliably produce an identifier suitable for enrollment. If they do not, document the exact incompatibility and evaluate a supported school-provided credential interface or compatible NFC card/tag before proceeding. A framework change alone cannot fix incompatible radio hardware.
-
-## Phase 2: app foundation and card enrollment
-
-- Scaffold the Android app and establish lint, TypeScript, build, and USB-development commands. Verify the chosen SDK's documentation and native toolchain; run one native build at a time using the memory-limited approach established in Wallet.
-- Keep routes in src/app, UI in src/components, attendance/data functions in src/data, integrations in src/lib, and styling in src/theme. Add files only as needed.
-- Configure NFC through app configuration/plugins; inspect the generated manifest. Keep generated android files disposable. Test with a physical device; emulator screens and mock scans cannot validate NFC.
-- Prepare local schema migrations and an isolated development database. Do not apply migrations to a live project without explicit instruction.
-- Implement council sign-in, event access, individual student registration, and card enrollment using the flow above. Separate permission to register or replace cards from ordinary event scanning. Enforce unique student numbers and validate required fields. Normalize card identifiers as fixed byte-order hexadecimal strings with leading zeroes preserved; never convert them to numeric student numbers or assume a UUID format.
-- Enforce unique active card assignments. Card replacement revokes the previous assignment and retains its history; unknown cards require deliberate enrollment, rather than automatic attendance or automatic student creation.
-
-Exit condition: an authorized council member can register a test student and link a test card once, with other operators denied actions outside their assigned permissions. The mapping is reusable at two different test events.
-
-## Phase 3: complete online attendance
-
-- Implement event list/setup, student/card registration, scanning, attendance list, and history screens, sharing forms where practical. Council members can operate multiple scanning phones at the same event.
-- For open college events, accept registered active students. If an event has an explicit expected-attendee or eligibility list, snapshot it when opening check-in and validate against that snapshot. Do not infer that every student in the college is expected at every event.
-- On tap, resolve the active card assignment and validate council access, event state, student status, and any configured eligibility on the server. Insert attendance atomically and return the existing result if already recorded. Enforce unique (event_id, student_id) in PostgreSQL; a UI cooldown alone cannot prevent duplicates across phones.
-- Show the student's name and saved attendance time, with optional vibration. Give separate feedback for already recorded, unknown/revoked card, ineligible student, read error, and save failure. Serialize callbacks and briefly suppress repeats from a held card while remaining ready for the next student. Keep student search and registration outside the normal scan path.
-- For the online first version, display success only after server confirmation. On timeout, offer a retry that safely returns any existing attendance. Stop scanning when the screen loses focus, the app backgrounds, or the event closes.
-- Store server receipt time and operator, plus observation time as separate metadata. Display dates in the college's configured timezone. Begin with attended status; add attendance windows, check-out, or late rules only after the owner defines a need and the time policy.
-- Closing an event prevents new ordinary taps. Show attendance totals and records; derive absences only against an explicit expected-attendee snapshot after closure. Allow authorized council corrections with a reason and an audit entry preserving the original result.
-
-Exit condition: a complete event works end to end; repeated taps, retries, simultaneous device submissions, and a close-versus-tap race cannot create duplicate or invalid attendance. The same student can attend a second event independently.
-
-## Minimal data model
-
-| Entity | Purpose |
-| --- | --- |
-| Council profiles | Reference authenticated council members and their permitted registration, event-management, scanning, and reporting actions |
-| Students | Internal ID, printed student number, display name, active state |
-| Card assignments | Student, normalized card identifier, assigned/revoked timestamps |
-| Events and event operators | Event details, scheduled/open/closed times, and council members authorized to operate each event |
-| Event expected attendees | Optional snapshot for explicit eligibility or absence reporting; omitted for unrestricted events |
-| Attendance | Event, student, card assignment if tapped, method, operator, observed time, server receipt time; unique student/event |
-| Attendance audit | Corrections with actor, reason, time, and previous/new values |
-
-Use database constraints and a small transactional database function for recording attendance; do not rely on client checks or an unrestricted upsert. Restrict enrollment, revocation, recording, correction, and reporting through server permissions. UID matching is a card lookup, not proof of the holder's identity; it cannot prevent a student lending an ID. A requirement for cryptographic card authentication needs a separate design and supported school credentials.
-
-## Phase 4: offline support, if required
-
-Reuse Wallet's durable outbox idea with a small attendance-specific implementation, rather than its finance synchronization engine.
-
-- Cache only authorized student/card/event data and any relevant eligibility snapshot. Persist each scan and its unique operation ID in SQLite before showing “Saved on this phone — pending sync.” Keep pending, synced, and rejected states distinct.
-- Retain pending records through app termination and network errors. Revalidate council access, student status, card assignment, event eligibility, and event state on reconnect; enforce the same server uniqueness constraint. Two offline phones may temporarily show the same student as pending; reconciliation must yield one attendance record.
-- Keep device observation time and server receipt time separate. Decide explicitly how closed events, revoked cards, clock changes, and stale cached data affect offline records; surface conflicts for council review rather than silently dropping or trusting them.
-- Partition cached data by council account and preserve unsynced work across expired authentication. Require an explicit resolution before sign-out clears pending records. Keep new card enrollment online in the first offline implementation to avoid conflicting assignments.
-
-Exit condition: airplane-mode taps survive force-stop/relaunch and synchronize once, with visible handling of rejected records.
-
-## Phase 5: reporting and pilot
-
-- Add attendance export if needed after the basic workflow is usable. Restrict exports to authorized council members. Official student-list importing remains excluded.
-- Run a mock council event with isolated test data first, then an owner-authorized real deployment. Check actual tap pace, multiple scanning phones, the separate registration queue, name readability, counts, corrections, and day/time boundaries.
-- Produce a preview APK that launches without Metro. Choose signed APK distribution or Play Store delivery with the owner; keep signing material outside source control.
-
-## Verification and remaining decisions
-
-For implementation, run Expo lint, TypeScript checking, Expo Doctor, an Android native build, focused attendance/authorization tests, and physical-device NFC checks. Use isolated data; remove temporary test artifacts. Verify individual registration validation, conflicting card assignments, duplicate student numbers, replacement/revocation, mapping reuse across events, online retry idempotency, concurrent taps, eligibility, event closure, correction audits, NFC disabled/unsupported states, screen lifecycle, and authentication failures. Add persistence/reconnect checks with offline work. A Sheets choice also requires tests for concurrent registration/check-in, partial writes, access controls, text identifier preservation, and throttling under the intended workload.
-
-Before Phase 1, identify the real phone and student ID technology. Before registration/schema work, select the shared store, confirm required registration fields, who may enroll/replace cards, and how council members receive event permissions. Before extending attendance rules or offline work, confirm expected-attendee requirements, multiple attendance windows/check-out, timezone, event connectivity, and whether pending scans may be accepted after closure. Council-operated events and individual registration are confirmed; teacher/classroom workflows and official student-list importing are excluded in [SUGGESTIONS.md](SUGGESTIONS.md). The open decisions do not prevent the compatibility prototype.
-
-The current repository has no runnable app checks. Documentation accuracy, local references, and planning status are the only checks applicable to this planning change.
+The current change is documentation only. Verify local links, scope consistency, and whitespace; app lint/build/tests cannot run until an app scaffold exists. See [FEATURES.md](FEATURES.md), [CONTEXT.md](CONTEXT.md), and [SUGGESTIONS.md](SUGGESTIONS.md).

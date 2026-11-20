@@ -1,5 +1,15 @@
 # Progress
 
+## 2026-11-20: Google Sheets selected with local capture and manual batch sync
+
+- Owner selected Google Sheets as the council's shared store and specified local-first registration, manual conflict-checked registration upload, fresh directory download before attendance, local attendance capture, and manual conflict-checked post-session upload. These supersede earlier Supabase/online-first proposals; offline persistence is core scope.
+- Reworked IMPLEMENTATION_PLAN.md and updated README.md, CONTEXT.md, FEATURES.md, and SUGGESTIONS.md to reflect the selected direction. Proposed SQLite on Android and one authenticated Apps Script service for batch reconciliation.
+- Added authoritative locked read/compare/write to cover simultaneous phone uploads, stable operation IDs for lost-response retries, canonical shared IDs, per-record acknowledgements/conflicts, and preservation of pending data. Offline cross-phone duplicate detection remains eventual; local counts are provisional.
+- Separated shared events from local phone sessions and distinguished finishing a session from closing upload intake. Documented stale-card identity conflicts, optional fresh-download exceptions, and synchronized registrations as the proposed simplest initial session input.
+- Verified primary Google documentation for script locks, atomic batch requests, batching best practices, and Sheets/Apps Script limits. Checked local Markdown links, whitespace, and removal of superseded storage/online-first assumptions from current documentation. No app scaffold exists for lint/build/tests.
+- No app, spreadsheet, service deployment, credentials, live data, device changes, migrations, or Git operations were performed.
+- Remaining: test actual phone/cards; confirm council authentication/workbook ownership and editing rules, required registration fields, and pending-upload/event-finalization policy; then implement the documented prototype and local persistence/sync phases.
+
 ## 2026-11-20: Individual registration and shared storage options
 
 - Owner ruled out official student-list importing and required individual student registration. Recorded the exclusion in SUGGESTIONS.md and removed import/mapping prerequisites from the current plan, context, README, and feature scope. Earlier import proposals below are superseded.

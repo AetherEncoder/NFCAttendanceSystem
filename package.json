@@ -1,0 +1,19 @@
+{
+  "name": "nfc-attendance",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start --localhost",
+    "android": "sh scripts/android-build.sh",
+    "typecheck": "tsc --noEmit",
+    "lint": "expo lint",
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "expo": "57.0.33",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-nfc-manager": "4.3.0"
+  }
+}
